@@ -1,0 +1,11 @@
+fastapi==0.99.1
+uvicorn[standard]==0.22.0
+openai==1.0.0
+numpy==1.26.0
+faiss-cpu==1.7.4
+python-dotenv==1.0.0
+pydantic==2.5.1
+requests==2.31.0
+rank-bm25==0.2.2
+pytest==7.4.3
+httpx==0.25.1

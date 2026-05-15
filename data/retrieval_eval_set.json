@@ -1,0 +1,18 @@
+[
+  {
+    "query": "I need a Python backend developer assessment",
+    "relevant_ids": ["assessment_2"]
+  },
+  {
+    "query": "Need a Java developer assessment with OOP and concurrency",
+    "relevant_ids": ["assessment_1"]
+  },
+  {
+    "query": "Looking for FastAPI testing coverage for backend engineers",
+    "relevant_ids": ["assessment_2"]
+  },
+  {
+    "query": "Need an assessment for streams and concurrency in Java",
+    "relevant_ids": ["assessment_1"]
+  }
+]

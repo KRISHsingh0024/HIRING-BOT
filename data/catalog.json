@@ -1,0 +1,16 @@
+[
+  {
+    "id": "assessment_1",
+    "title": "Java 8 Developer Assessment",
+    "description": "Assessment for Java 8 developers focusing on OOP, concurrency, and streams.",
+    "seniority": "mid",
+    "skills": ["Java", "OOP", "Concurrency"]
+  },
+  {
+    "id": "assessment_2",
+    "title": "Python Backend Developer Assessment",
+    "description": "Assessment covering FastAPI, REST, async programming, and testing.",
+    "seniority": "mid",
+    "skills": ["Python", "FastAPI", "Testing"]
+  }
+]
