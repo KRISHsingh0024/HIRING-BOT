@@ -1,8 +1,8 @@
-fastapi==0.99.1
-uvicorn[standard]==0.22.0
-openai==1.0.0
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+openai==1.40.6
 numpy==1.26.0
-faiss-cpu==1.7.4
+faiss-cpu==1.8.0; platform_system == "Linux" and platform_machine == "x86_64"
 python-dotenv==1.0.0
 pydantic==2.5.1
 requests==2.31.0
