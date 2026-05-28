@@ -3,24 +3,28 @@ const topKInput = document.getElementById("topKInput");
 const rerankerInput = document.getElementById("rerankerInput");
 const sendButton = document.getElementById("sendButton");
 const copyButton = document.getElementById("copyButton");
+const resetButton = document.getElementById("resetButton");
 const healthValue = document.getElementById("healthValue");
 const serverStatus = document.getElementById("serverStatus");
 const actionValue = document.getElementById("actionValue");
 const turnCountValue = document.getElementById("turnCountValue");
 const endValue = document.getElementById("endValue");
 const provenanceValue = document.getElementById("provenanceValue");
-const replyValue = document.getElementById("replyValue");
 const clarifyValue = document.getElementById("clarifyValue");
 const recommendationsValue = document.getElementById("recommendationsValue");
 const retrievedAssessmentsValue = document.getElementById("retrievedAssessmentsValue");
 const jsonValue = document.getElementById("jsonValue");
+const chatMessages = document.getElementById("chatMessages");
 
 let lastPayload = null;
 const STORAGE_KEYS = {
   query: "shl.query",
   topK: "shl.topK",
   reranker: "shl.reranker",
+  messages: "shl.messages",
 };
+
+let messages = [];
 
 function loadSetting(key, fallback) {
   try {
@@ -58,8 +62,78 @@ function setStatus(text, tone = "ok") {
 }
 
 function autoResizeTextarea() {
+  if (!queryInput) {
+    return;
+  }
   queryInput.style.height = "auto";
-  queryInput.style.height = `${Math.max(queryInput.scrollHeight, 180)}px`;
+  queryInput.style.height = `${Math.max(queryInput.scrollHeight, 56)}px`;
+}
+
+function formatTime(timestamp) {
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (error) {
+    return "";
+  }
+}
+
+function persistMessages() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+  } catch (error) {
+    // ignore
+  }
+}
+
+function loadMessages() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.messages);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter((m) => m && typeof m.role === "string" && typeof m.content === "string")
+      .map((m) => ({ role: m.role, content: m.content, ts: m.ts || Date.now() }));
+  } catch (error) {
+    return [];
+  }
+}
+
+function renderChat() {
+  if (!chatMessages) {
+    return;
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    chatMessages.innerHTML = `
+      <div class="chat-empty">
+        Start a conversation. Example: <strong>I need a backend-leaning Python developer assessment</strong>.
+      </div>
+    `;
+    return;
+  }
+
+  chatMessages.innerHTML = messages
+    .map((m) => {
+      const isUser = m.role === "user";
+      const label = isUser ? "You" : "Assistant";
+      const time = m.ts ? formatTime(m.ts) : "";
+      return `
+        <div class="chat-message ${isUser ? "user" : "assistant"}">
+          <div class="chat-meta"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(time)}</span></div>
+          <div class="bubble">${escapeHtml(m.content)}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function escapeHtml(value) {
@@ -160,8 +234,6 @@ function renderPayload(data) {
   actionValue.textContent = data.action || "—";
   turnCountValue.textContent = data.turn_count ?? "—";
   endValue.textContent = data.end_of_conversation === true ? "true" : data.end_of_conversation === false ? "false" : "—";
-  replyValue.textContent = data.reply || data.reason || "—";
-  replyValue.classList.toggle("empty", !(data.reply || data.reason));
   clarifyValue.textContent = data.clarify_prompt || "—";
   clarifyValue.classList.toggle("empty", !data.clarify_prompt);
   renderRecommendations(data.recommendations);
@@ -176,12 +248,30 @@ async function fetchHealth() {
   try {
     const response = await fetch("/health");
     const data = await response.json();
-    healthValue.textContent = `${data.status} (${data.backend})`;
+    const idx = data.indices ? ` · ${data.indices}` : "";
+    healthValue.textContent = `${data.status} (${data.backend})${idx}`;
     setStatus("Ready", "ok");
   } catch (error) {
     healthValue.textContent = "offline";
     setStatus("Backend offline", "danger");
   }
+}
+
+function addMessage(role, content) {
+  if (!content) {
+    return;
+  }
+  messages.push({ role, content, ts: Date.now() });
+  persistMessages();
+  renderChat();
+}
+
+function resetChat() {
+  messages = [];
+  persistMessages();
+  renderChat();
+  renderPayload({ action: "—", recommendations: [], retrieved_assessments: [] });
+  setStatus("Ready", "ok");
 }
 
 async function runTest() {
@@ -195,8 +285,12 @@ async function runTest() {
   saveSetting(STORAGE_KEYS.topK, String(topKInput.value || 5));
   saveSetting(STORAGE_KEYS.reranker, rerankerInput.checked ? "true" : "false");
 
+  addMessage("user", query);
+  queryInput.value = "";
+  autoResizeTextarea();
+
   const payload = {
-    messages: [{ role: "user", content: query }],
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
     top_k: Number(topKInput.value || 5),
     use_reranker: rerankerInput.checked,
   };
@@ -232,13 +326,23 @@ async function runTest() {
     }
 
     renderPayload(data);
+
+    if (data.action === "clarify" && data.clarify_prompt) {
+      addMessage("assistant", data.clarify_prompt);
+    } else if (data.reply) {
+      addMessage("assistant", data.reply);
+    } else if (data.reason) {
+      addMessage("assistant", String(data.reason));
+    }
+
     setStatus(response.ok ? "Response received" : "Request returned an error", response.ok ? "ok" : "danger");
   } catch (error) {
     renderPayload({ action: "error", reply: String(error), recommendations: [], end_of_conversation: true });
+    addMessage("assistant", `Request failed: ${String(error)}`);
     setStatus("Request failed", "danger");
   } finally {
     sendButton.disabled = false;
-    sendButton.textContent = "Run Test";
+    sendButton.textContent = "Send";
   }
 }
 
@@ -261,6 +365,9 @@ topKInput.value = loadSetting(STORAGE_KEYS.topK, topKInput.value);
 rerankerInput.checked = loadSetting(STORAGE_KEYS.reranker, "true") !== "false";
 autoResizeTextarea();
 
+messages = loadMessages();
+renderChat();
+
 document.querySelectorAll("[data-query]").forEach((button) => {
   button.addEventListener("click", () => {
     queryInput.value = button.dataset.query || "";
@@ -272,6 +379,9 @@ document.querySelectorAll("[data-query]").forEach((button) => {
 
 sendButton.addEventListener("click", runTest);
 copyButton.addEventListener("click", copyJson);
+if (resetButton) {
+  resetButton.addEventListener("click", resetChat);
+}
 queryInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
     runTest();
