@@ -11,8 +11,17 @@ load_dotenv()
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY") or os.getenv("OPENAI_API_KEY")
 NIM_BASE_URL = os.getenv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
+DEFAULT_CHAT_MODEL = os.getenv("NVIDIA_CHAT_MODEL", "meta/llama-3.1-70b-instruct")
+DEFAULT_EMBED_MODEL = os.getenv("NVIDIA_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
+DEFAULT_RERANK_MODEL = os.getenv("NVIDIA_RERANK_MODEL", "nvidia/nv-reranker-qa-mistral-7b")
+
 
 def _get_client():
+    if not NIM_API_KEY:
+        raise RuntimeError(
+            "Missing NVIDIA/OpenAI API key. Set NVIDIA_API_KEY in .env (preferred) "
+            "or OPENAI_API_KEY, then re-run."
+        )
     return OpenAI(
         base_url=NIM_BASE_URL,
         api_key=NIM_API_KEY,
@@ -21,7 +30,7 @@ def _get_client():
 
 def get_embedding(
     text: str,
-    model: str = "nvidia/nv-embedqa-e5-v5",
+    model: str = DEFAULT_EMBED_MODEL,
     input_type: str = "passage",
 ) -> List[float]:
     """Get embedding from NVIDIA NV-Embed model."""
@@ -35,7 +44,7 @@ def get_embedding(
 
 
 def chat_completion(
-    messages: List[dict], model: str = "meta/llama-3.1-70b-instruct"
+    messages: List[dict], model: str = DEFAULT_CHAT_MODEL
 ) -> dict:
     """Get chat completion from NVIDIA NIM Llama 3.1."""
     client = _get_client()
@@ -57,7 +66,7 @@ def chat_completion(
     return {"content": str(resp), "role": "assistant"}
 
 
-def rerank(query: str, docs: List[str], model: str = "nvidia/nv-reranker-qa-mistral-7b") -> List[float]:
+def rerank(query: str, docs: List[str], model: str = DEFAULT_RERANK_MODEL) -> List[float]:
     """
     Rerank documents using NVIDIA reranker.
     Returns scores (higher is better).

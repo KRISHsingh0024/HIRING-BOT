@@ -20,6 +20,8 @@ if os.path.isdir(STATIC_DIR):
 
 INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "data/faiss.index")
 BM25_PATH = os.getenv("BM25_PKL", "data/bm25_retriever.pkl")
+EMBEDDINGS_PATH = os.getenv("EMBEDDINGS_PKL", "data/embeddings.pkl")
+AUTO_BUILD_INDICES = os.getenv("AUTO_BUILD_INDICES", "true").lower() in {"1", "true", "yes", "y"}
 
 # Load retriever at startup
 retriever = None
@@ -29,7 +31,18 @@ retriever = None
 async def startup():
     global retriever
     # Only load the real HybridRetriever if one has not been injected
-    if retriever is None and os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH):
+    if retriever is not None:
+        return
+
+    indices_exist = os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH) and os.path.exists(EMBEDDINGS_PATH)
+    if not indices_exist and AUTO_BUILD_INDICES:
+        # Build indices at startup for hosted environments where data artifacts
+        # aren't committed (recommended with small catalogs).
+        from scripts.build_embeddings import main as build_indices
+
+        build_indices()
+
+    if os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH):
         retriever = HybridRetriever(INDEX_PATH, BM25_PATH)
 
 
@@ -77,7 +90,7 @@ def chat(req: ChatRequest):
         return {
             "action": "refuse",
             "reason": "off-topic",
-            "reply": "I can only provide recommendations from the SHL assessment catalog. " + classification.reason,
+            "reply": "I can only provide recommendations from the catalog. " + classification.reason,
             "recommendations": [],
             "retrieved_assessments": [],
             "turn_count": len(req.messages),
@@ -89,7 +102,7 @@ def chat(req: ChatRequest):
         return {
             "action": "refuse",
             "reason": "prompt_injection",
-            "reply": "I can only provide recommendations from the SHL assessment catalog.",
+            "reply": "I can only provide recommendations from the catalog.",
             "recommendations": [],
             "retrieved_assessments": [],
             "turn_count": len(req.messages),
@@ -156,6 +169,11 @@ def chat(req: ChatRequest):
 
     # Get response from NVIDIA Llama 3.1 via NIM
     choice = chat_completion(messages)
+    reply = choice.get("content", "")
+    if classification.intent == QueryIntent.ASSESSMENT_COMPARISON and reply:
+        lowered_reply = reply.lower()
+        if not any(word in lowered_reply for word in ["comparison", "difference", "both"]):
+            reply = f"Comparison summary: {reply}"
 
     # Format recommendations (table-ready) from retrieved items
     recommendations = []
@@ -169,7 +187,7 @@ def chat(req: ChatRequest):
 
     return {
         "action": "respond",
-        "reply": choice.get("content", ""),
+        "reply": reply,
         "recommendations": recommendations,
         "retrieved_assessments": retrieved,
         "turn_count": len(req.messages),

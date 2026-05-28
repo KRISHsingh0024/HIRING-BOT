@@ -1,0 +1,23 @@
+.vercel
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Virtualenv
+.venv/
+
+# Local secrets
+.env
+
+# Local generated data
+data/*.pkl
+data/*.index
+
+# Binaries / downloads (optional)
+*.pdf
+*.zip
+download.pdf
+

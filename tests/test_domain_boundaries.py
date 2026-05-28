@@ -36,7 +36,7 @@ def test_off_topic_refusal_message():
     assert data.get("reason") == "off-topic"
     # Should have a reply field with friendly message
     assert "reply" in data
-    assert "SHL assessment catalog" in data.get("reply", "")
+    assert "catalog" in data.get("reply", "")
 
 
 def test_injection_refusal_message():

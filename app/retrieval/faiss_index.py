@@ -4,58 +4,87 @@ from typing import Any, List, Tuple
 
 import numpy as np
 
-try:
-    import faiss
-except ImportError:  # pragma: no cover - exercised when faiss is unavailable
-    faiss = None
-
 EMBEDDINGS_PKL = os.getenv("EMBEDDINGS_PKL", "data/embeddings.pkl")
 
+try:
+    import faiss  # type: ignore
 
-class NumpyIndex:
-    def __init__(self, vectors: List[List[float]]):
-        self.vectors = np.array(vectors, dtype="float32")
-        if self.vectors.ndim != 2:
-            raise ValueError("vectors must be a 2D array")
+    _FAISS_AVAILABLE = True
+except Exception:  # pragma: no cover
+    faiss = None  # type: ignore
+    _FAISS_AVAILABLE = False
 
-    def search(self, query: np.ndarray, k: int):
-        q = np.asarray(query, dtype="float32")
+
+class NumpyFlatL2Index:
+    def __init__(self, dim: int):
+        self.dim = dim
+        self.vectors: np.ndarray = np.zeros((0, dim), dtype=np.float32)
+
+    def add(self, vecs: np.ndarray) -> None:
+        vecs = np.asarray(vecs, dtype=np.float32)
+        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
+            raise ValueError(f"Expected shape (n, {self.dim}), got {vecs.shape}")
+        if self.vectors.size == 0:
+            self.vectors = vecs.copy()
+        else:
+            self.vectors = np.vstack([self.vectors, vecs])
+
+    def search(self, q: np.ndarray, k: int):
+        q = np.asarray(q, dtype=np.float32)
         if q.ndim == 1:
             q = q[None, :]
-        if q.ndim != 2:
-            raise ValueError("query must be a 1D or 2D array")
-        if q.shape[1] != self.vectors.shape[1]:
-            raise ValueError("query dimension does not match index dimension")
+        if q.ndim != 2 or q.shape[1] != self.dim:
+            raise ValueError(f"Expected query shape (batch, {self.dim}), got {q.shape}")
 
-        diff = self.vectors[None, :, :] - q[:, None, :]
-        distances = np.sum(diff * diff, axis=2)
-        top_indices = np.argsort(distances, axis=1)[:, :k]
-        top_distances = np.take_along_axis(distances, top_indices, axis=1)
-        return top_distances, top_indices
+        if self.vectors.size == 0:
+            return (
+                np.full((q.shape[0], k), np.inf, dtype=np.float32),
+                np.full((q.shape[0], k), -1, dtype=np.int64),
+            )
+
+        diffs = self.vectors[None, :, :] - q[:, None, :]
+        dists = np.sum(diffs * diffs, axis=-1)  # (batch, n)
+        idx = np.argsort(dists, axis=1)[:, :k]
+        dist_sorted = np.take_along_axis(dists, idx, axis=1)
+        return dist_sorted.astype(np.float32), idx.astype(np.int64)
 
 
 def build_index(embeddings_list: List[List[float]]):
-    if faiss is not None:
-        vecs = np.array(embeddings_list).astype("float32")
-        dim = vecs.shape[1]
+    vecs = np.asarray(embeddings_list, dtype=np.float32)
+    if vecs.ndim != 2:
+        raise ValueError("embeddings_list must be a 2D list/array")
+    dim = int(vecs.shape[1])
+
+    if _FAISS_AVAILABLE:
         index = faiss.IndexFlatL2(dim)
         index.add(vecs)
         return index
 
-    return NumpyIndex(embeddings_list)
+    index = NumpyFlatL2Index(dim)
+    index.add(vecs)
+    return index
 
 
-def save_index(index: Any, path: str):
-    if faiss is not None and isinstance(index, faiss.Index):
-        faiss.write_index(index, path)
-        return
+def save_index(index: Any, path: str) -> None:
+    if _FAISS_AVAILABLE:
+        try:
+            faiss.write_index(index, path)
+            return
+        except Exception:
+            pass
 
+    # Stable pickle payload for environments without faiss wheels
+    payload = {
+        "backend": "numpy_flat_l2",
+        "dim": getattr(index, "dim", None),
+        "vectors": getattr(index, "vectors", None),
+    }
     with open(path, "wb") as f:
-        pickle.dump({"backend": "numpy", "vectors": getattr(index, "vectors", None)}, f)
+        pickle.dump(payload, f)
 
 
 def load_index(path: str):
-    if faiss is not None:
+    if _FAISS_AVAILABLE:
         try:
             return faiss.read_index(path)
         except Exception:
@@ -64,11 +93,13 @@ def load_index(path: str):
     with open(path, "rb") as f:
         payload = pickle.load(f)
 
-    if isinstance(payload, dict) and payload.get("backend") == "numpy":
-        return NumpyIndex(payload["vectors"])
-
-    if isinstance(payload, NumpyIndex):
-        return payload
+    if isinstance(payload, dict) and payload.get("backend") == "numpy_flat_l2":
+        dim = int(payload["dim"])
+        idx = NumpyFlatL2Index(dim)
+        vectors = payload.get("vectors")
+        if isinstance(vectors, np.ndarray) and vectors.size:
+            idx.add(vectors)
+        return idx
 
     raise ValueError(f"Unsupported index format in {path}")
 
@@ -81,6 +112,6 @@ def load_embeddings() -> Tuple[List[dict], List[List[float]]]:
 
 
 def search(index: Any, query_vector: List[float], k: int = 5):
-    q = np.array([query_vector]).astype("float32")
-    distances, indices = index.search(q, k)
-    return distances[0].tolist(), indices[0].tolist()
+    q = np.asarray([query_vector], dtype=np.float32)
+    D, I = index.search(q, k)
+    return D[0].tolist(), I[0].tolist()

@@ -8,12 +8,42 @@ const serverStatus = document.getElementById("serverStatus");
 const actionValue = document.getElementById("actionValue");
 const turnCountValue = document.getElementById("turnCountValue");
 const endValue = document.getElementById("endValue");
+const provenanceValue = document.getElementById("provenanceValue");
 const replyValue = document.getElementById("replyValue");
 const clarifyValue = document.getElementById("clarifyValue");
 const recommendationsValue = document.getElementById("recommendationsValue");
+const retrievedAssessmentsValue = document.getElementById("retrievedAssessmentsValue");
 const jsonValue = document.getElementById("jsonValue");
 
 let lastPayload = null;
+const STORAGE_KEYS = {
+  query: "shl.query",
+  topK: "shl.topK",
+  reranker: "shl.reranker",
+};
+
+function loadSetting(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function saveSetting(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    // Ignore storage failures in private or restricted browsing modes.
+  }
+}
+
+function setTextContentIfPresent(node, value) {
+  if (node) {
+    node.textContent = value;
+  }
+}
 
 function setStatus(text, tone = "ok") {
   serverStatus.textContent = text;
@@ -27,6 +57,11 @@ function setStatus(text, tone = "ok") {
     tone === "ok" ? "#5eead4" : tone === "warn" ? "#fde68a" : "#fecdd3";
 }
 
+function autoResizeTextarea() {
+  queryInput.style.height = "auto";
+  queryInput.style.height = `${Math.max(queryInput.scrollHeight, 180)}px`;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -34,6 +69,30 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function renderDetailGrid(target, entries) {
+  if (!target) {
+    return;
+  }
+
+  if (!Array.isArray(entries) || entries.length === 0) {
+    target.classList.add("empty-state");
+    target.textContent = "—";
+    return;
+  }
+
+  target.classList.remove("empty-state");
+  target.innerHTML = entries
+    .map(
+      ({ label, value }) => `
+        <div class="detail-item">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `,
+    )
+    .join("");
 }
 
 function renderRecommendations(recommendations) {
@@ -66,6 +125,36 @@ function renderRecommendations(recommendations) {
     .join("");
 }
 
+function renderRetrievedAssessments(retrievedAssessments) {
+  if (!Array.isArray(retrievedAssessments) || retrievedAssessments.length === 0) {
+    retrievedAssessmentsValue.innerHTML = '<div class="cards empty-state">No retrieved assessments yet.</div>';
+    return;
+  }
+
+  retrievedAssessmentsValue.innerHTML = retrievedAssessments
+    .map((item) => {
+      const meta = item.meta || {};
+      const scoreBits = [
+        item.hybrid_score !== undefined ? `Hybrid ${Number(item.hybrid_score).toFixed(3)}` : null,
+        item.vector_score !== undefined ? `Vector ${Number(item.vector_score).toFixed(3)}` : null,
+        item.bm25_score !== undefined ? `BM25 ${Number(item.bm25_score).toFixed(3)}` : null,
+        item.metadata_score !== undefined ? `Meta ${Number(item.metadata_score).toFixed(3)}` : null,
+      ].filter(Boolean);
+
+      return `
+        <div class="card">
+          <h3>#${escapeHtml(item.rank ?? item.final_rank ?? "—")} ${escapeHtml(item.title || item.id || "Assessment")}</h3>
+          <p>${escapeHtml(meta.description || item.description || "")}</p>
+          <div class="badge-row">
+            <span class="badge">${escapeHtml(item.id || "unknown")}</span>
+            ${scoreBits.map((bit) => `<span class="badge warn">${escapeHtml(bit)}</span>`).join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function renderPayload(data) {
   lastPayload = data;
   actionValue.textContent = data.action || "—";
@@ -76,6 +165,10 @@ function renderPayload(data) {
   clarifyValue.textContent = data.clarify_prompt || "—";
   clarifyValue.classList.toggle("empty", !data.clarify_prompt);
   renderRecommendations(data.recommendations);
+  renderRetrievedAssessments(data.retrieved_assessments);
+  renderDetailGrid(provenanceValue, data.provenance
+    ? Object.entries(data.provenance).map(([label, value]) => ({ label, value: value === null || value === undefined ? "—" : String(value) }))
+    : []);
   jsonValue.textContent = JSON.stringify(data, null, 2);
 }
 
@@ -97,6 +190,10 @@ async function runTest() {
     setStatus("Enter a query first", "warn");
     return;
   }
+
+  saveSetting(STORAGE_KEYS.query, query);
+  saveSetting(STORAGE_KEYS.topK, String(topKInput.value || 5));
+  saveSetting(STORAGE_KEYS.reranker, rerankerInput.checked ? "true" : "false");
 
   const payload = {
     messages: [{ role: "user", content: query }],
@@ -141,9 +238,16 @@ async function copyJson() {
   }
 }
 
+queryInput.value = loadSetting(STORAGE_KEYS.query, queryInput.value);
+topKInput.value = loadSetting(STORAGE_KEYS.topK, topKInput.value);
+rerankerInput.checked = loadSetting(STORAGE_KEYS.reranker, "true") !== "false";
+autoResizeTextarea();
+
 document.querySelectorAll("[data-query]").forEach((button) => {
   button.addEventListener("click", () => {
     queryInput.value = button.dataset.query || "";
+    saveSetting(STORAGE_KEYS.query, queryInput.value);
+    autoResizeTextarea();
     queryInput.focus();
   });
 });
@@ -155,5 +259,11 @@ queryInput.addEventListener("keydown", (event) => {
     runTest();
   }
 });
+queryInput.addEventListener("input", () => {
+  autoResizeTextarea();
+  saveSetting(STORAGE_KEYS.query, queryInput.value);
+});
+topKInput.addEventListener("change", () => saveSetting(STORAGE_KEYS.topK, String(topKInput.value || 5)));
+rerankerInput.addEventListener("change", () => saveSetting(STORAGE_KEYS.reranker, rerankerInput.checked ? "true" : "false"));
 
 fetchHealth();

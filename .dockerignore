@@ -1,0 +1,16 @@
+.git
+.venv
+__pycache__
+.pytest_cache
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Local data artifacts
+/data/*.pkl
+/data/*.index
+
+# Misc
+*.zip
+*.pdf

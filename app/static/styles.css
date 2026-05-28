@@ -302,6 +302,34 @@ textarea {
   padding: 16px;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.detail-item {
+  display: grid;
+  gap: 6px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.detail-item span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.detail-item strong {
+  color: var(--text);
+  font-size: 0.98rem;
+  word-break: break-word;
+}
+
 .block-title {
   margin-bottom: 10px;
 }
@@ -316,6 +344,10 @@ textarea {
 }
 
 .reply.empty, .cards.empty-state {
+  color: var(--muted);
+}
+
+.empty-state {
   color: var(--muted);
 }
 

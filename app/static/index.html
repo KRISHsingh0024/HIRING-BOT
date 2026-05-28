@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SHL Assessment Test Lab</title>
+    <title>Assessment Test Lab</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -13,7 +13,7 @@
     <main class="shell">
       <section class="hero">
         <div>
-          <p class="eyebrow">SHL Retrieval Test Lab</p>
+          <p class="eyebrow">Assessment Retrieval Lab</p>
           <h1>Test clarification, retrieval, reranking, and refusal behavior in one place.</h1>
           <p class="lede">
             Use this UI to probe the full conversation loop: vague queries, refinements,
@@ -92,6 +92,11 @@
           </div>
 
           <div class="response-block">
+            <div class="block-title">Provenance</div>
+            <div id="provenanceValue" class="detail-grid empty-state">—</div>
+          </div>
+
+          <div class="response-block">
             <div class="block-title">Reply</div>
             <pre id="replyValue" class="reply empty">Run a test to see the model response.</pre>
           </div>
@@ -105,6 +110,11 @@
               <div class="block-title">Recommendations</div>
               <div id="recommendationsValue" class="cards empty-state">—</div>
             </div>
+          </div>
+
+          <div class="response-block">
+            <div class="block-title">Retrieved Assessments</div>
+            <div id="retrievedAssessmentsValue" class="cards empty-state">—</div>
           </div>
 
           <div class="response-block">

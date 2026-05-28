@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: shl-nim-rag
+    env: docker
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NVIDIA_NIM_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: FAISS_INDEX_PATH
+        value: data/faiss.index
+      - key: EMBEDDINGS_PKL
+        value: data/embeddings.pkl
+      - key: BM25_PKL
+        value: data/bm25_retriever.pkl
+      - key: CATALOG_JSON
+        value: data/catalog.json
+      - key: AUTO_BUILD_INDICES
+        value: "true"
+      # Set this in Render dashboard as a secret
+      - key: NVIDIA_API_KEY
+        sync: false
