@@ -81,6 +81,10 @@ The app serves:
 - Render will read `render.yaml`.
 - Add secret env var `NVIDIA_API_KEY` in the Render dashboard.
 
+Notes for free hosting:
+- Free instances may spin down when idle (cold start on first request).
+- No persistent disk on free plans, so indices may be rebuilt after restarts.
+
 ### Option 2: Azure App Service (container)
 
 See [azure-app-service.md](azure-app-service.md).

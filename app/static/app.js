@@ -212,7 +212,25 @@ async function runTest() {
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      data = { detail: "Non-JSON response" };
+    }
+
+    if (!response.ok) {
+      const detail = data && (data.detail || data.message) ? String(data.detail || data.message) : JSON.stringify(data);
+      data = {
+        action: "error",
+        reply: detail,
+        recommendations: [],
+        retrieved_assessments: [],
+        turn_count: 1,
+        end_of_conversation: true,
+      };
+    }
+
     renderPayload(data);
     setStatus(response.ok ? "Response received" : "Request returned an error", response.ok ? "ok" : "danger");
   } catch (error) {

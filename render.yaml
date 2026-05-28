@@ -2,7 +2,7 @@ services:
   - type: web
     name: shl-nim-rag
     env: docker
-    plan: starter
+    plan: free
     autoDeploy: true
     envVars:
       - key: NVIDIA_NIM_BASE_URL

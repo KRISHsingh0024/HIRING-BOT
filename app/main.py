@@ -1,6 +1,7 @@
 """FastAPI orchestration layer for NVIDIA NIM + FAISS + BM25 + Reranking."""
 import os
 import json
+import asyncio
 from typing import List
 
 from fastapi import FastAPI, HTTPException
@@ -25,25 +26,37 @@ AUTO_BUILD_INDICES = os.getenv("AUTO_BUILD_INDICES", "true").lower() in {"1", "t
 
 # Load retriever at startup
 retriever = None
+_index_build_task: asyncio.Task | None = None
+_index_build_error: str | None = None
+
+
+async def _build_indices_and_load_retriever() -> None:
+    global retriever, _index_build_error
+    try:
+        from scripts.build_embeddings import main as build_indices
+
+        await asyncio.to_thread(build_indices)
+        if os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH):
+            retriever = HybridRetriever(INDEX_PATH, BM25_PATH)
+    except Exception as exc:  # noqa: BLE001
+        _index_build_error = f"{type(exc).__name__}: {exc}"
 
 
 @app.on_event("startup")
 async def startup():
-    global retriever
+    global retriever, _index_build_task
     # Only load the real HybridRetriever if one has not been injected
     if retriever is not None:
         return
 
     indices_exist = os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH) and os.path.exists(EMBEDDINGS_PATH)
-    if not indices_exist and AUTO_BUILD_INDICES:
-        # Build indices at startup for hosted environments where data artifacts
-        # aren't committed (recommended with small catalogs).
-        from scripts.build_embeddings import main as build_indices
-
-        build_indices()
-
-    if os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH):
+    if indices_exist and os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH):
         retriever = HybridRetriever(INDEX_PATH, BM25_PATH)
+        return
+
+    # For hosted environments, avoid blocking startup on index building.
+    if (not indices_exist) and AUTO_BUILD_INDICES and _index_build_task is None:
+        _index_build_task = asyncio.create_task(_build_indices_and_load_retriever())
 
 
 class Message(BaseModel):
@@ -59,7 +72,8 @@ class ChatRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "backend": "NVIDIA NIM"}
+    state = "ready" if retriever is not None else "building" if _index_build_task is not None else "missing"
+    return {"status": "ok", "backend": "NVIDIA NIM", "indices": state, "index_error": _index_build_error}
 
 
 @app.get("/")
@@ -78,7 +92,14 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail="messages required")
 
     if retriever is None:
-        raise HTTPException(status_code=500, detail="Retriever not loaded; run scripts/build_embeddings.py")
+        if _index_build_error:
+            raise HTTPException(status_code=503, detail=f"Index build failed: {_index_build_error}")
+        if _index_build_task is not None:
+            raise HTTPException(status_code=503, detail="Index is building; retry in a few seconds")
+        raise HTTPException(
+            status_code=503,
+            detail="Retriever not loaded; set AUTO_BUILD_INDICES=true or run scripts/build_embeddings.py",
+        )
 
     last_user = req.messages[-1]
 
